@@ -10,6 +10,10 @@ public sealed class TrayIcon : IDisposable
 
     public TrayIcon(PanelController controller)
     {
+        using var iconStream = System.Windows.Application.GetResourceStream(
+            new Uri("pack://application:,,,/Assets/AppIcon.ico")).Stream;
+        using var applicationIcon = new Icon(iconStream);
+
         var menu = new Forms.ContextMenuStrip();
         _open = menu.Items.Add(controller.HotkeyRegistered
             ? $"Open verba ({controller.ShortcutText})"
@@ -21,7 +25,7 @@ public sealed class TrayIcon : IDisposable
         _icon = new Forms.NotifyIcon
         {
             Text = controller.HotkeyRegistered ? $"verba — {controller.ShortcutText}" : "verba",
-            Icon = SystemIcons.Information, Visible = true, ContextMenuStrip = menu
+            Icon = (Icon)applicationIcon.Clone(), Visible = true, ContextMenuStrip = menu
         };
         _icon.BalloonTipTitle = "verba is running";
         _icon.BalloonTipText = controller.HotkeyRegistered
@@ -40,5 +44,11 @@ public sealed class TrayIcon : IDisposable
     }
 
     public event EventHandler? QuitRequested;
-    public void Dispose() { _icon.Visible = false; _icon.ContextMenuStrip?.Dispose(); _icon.Dispose(); }
+    public void Dispose()
+    {
+        _icon.Visible = false;
+        _icon.ContextMenuStrip?.Dispose();
+        _icon.Icon?.Dispose();
+        _icon.Dispose();
+    }
 }
