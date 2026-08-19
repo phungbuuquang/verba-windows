@@ -2,7 +2,7 @@ using verba_windows.Models;
 
 namespace verba_windows.Utilities;
 
-public sealed class Strings(AppLanguage language)
+public sealed partial class Strings(AppLanguage language)
 {
     private string Pick(string en, string vi, string ko) => language switch
     { Models.AppLanguage.Vi => vi, Models.AppLanguage.Ko => ko, _ => en };

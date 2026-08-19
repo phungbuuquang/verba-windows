@@ -2,6 +2,8 @@
 using System.Data;
 using System.Windows;
 
+using Velopack;
+
 namespace verba_windows;
 
 public partial class App : System.Windows.Application
@@ -9,6 +11,19 @@ public partial class App : System.Windows.Application
     private Mutex? _mutex;
     private AppHost.PanelController? _controller;
     private AppHost.TrayIcon? _tray;
+    private Services.AppUpdateService? _updates;
+    private readonly CancellationTokenSource _shutdown = new();
+    private bool _checkingForUpdates;
+
+    [STAThread]
+    private static void Main(string[] args)
+    {
+        VelopackApp.Build().Run();
+
+        var app = new App();
+        app.InitializeComponent();
+        app.Run();
+    }
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -29,9 +44,59 @@ public partial class App : System.Windows.Application
         var window = new AppHost.PanelWindow(viewModel);
         _controller = new AppHost.PanelController(window, viewModel, new Services.Win32SelectionCapture(), settings);
         _controller.QuitRequested += Quit;
-        _tray = new AppHost.TrayIcon(_controller);
+        _updates = new Services.AppUpdateService();
+        _tray = new AppHost.TrayIcon(_controller, language, _updates.IsInstalled);
         _tray.QuitRequested += Quit;
+        _tray.CheckForUpdatesRequested += async (_, _) => await CheckForUpdatesAsync(true);
+        _tray.ApplyUpdateRequested += (_, _) => ApplyUpdateAndRestart();
         System.Diagnostics.Trace.WriteLine($"Tray icon initialized; {_controller.ShortcutText} registered={_controller.HotkeyRegistered}");
+        _ = CheckForUpdatesAfterStartupAsync();
+    }
+
+    private async Task CheckForUpdatesAfterStartupAsync()
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(10), _shutdown.Token);
+            await CheckForUpdatesAsync(false);
+        }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
+    }
+
+    private async Task CheckForUpdatesAsync(bool userInitiated)
+    {
+        if (_checkingForUpdates || _updates is null || _tray is null || !_updates.IsInstalled) return;
+        _checkingForUpdates = true;
+        _tray.SetCheckingForUpdates();
+        try
+        {
+            var update = await _updates.CheckForUpdatesAsync();
+            if (update is null)
+            {
+                if (userInitiated) _tray.ShowUpToDate();
+                else _tray.ResetUpdateStatus();
+                return;
+            }
+
+            var version = update.TargetFullRelease.Version.ToString();
+            _tray.SetDownloadingUpdate(version);
+            await _updates.DownloadUpdatesAsync(update, _shutdown.Token);
+            if (!_shutdown.IsCancellationRequested) _tray.SetUpdateReady(version);
+        }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"Update check failed: {ex}");
+            if (userInitiated) _tray.ShowUpdateCheckFailed();
+            else _tray.ResetUpdateStatus();
+        }
+        finally { _checkingForUpdates = false; }
+    }
+
+    private void ApplyUpdateAndRestart()
+    {
+        if (_updates?.BeginApplyAndRestart() != true) return;
+        Shutdown();
     }
 
     private static void ConfigureLogging()
@@ -50,9 +115,11 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _shutdown.Cancel();
         _tray?.Dispose(); _controller?.Dispose();
         try { _mutex?.ReleaseMutex(); } catch { }
         _mutex?.Dispose();
+        _shutdown.Dispose();
         base.OnExit(e);
     }
 }
