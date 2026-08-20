@@ -19,6 +19,9 @@ public sealed class SettingsStore
     public string? DeviceId { get { lock (_gate) return _data.DeviceId; } }
     public string AppLanguage { get { lock (_gate) return _data.AppLanguage ?? "en"; } }
     public string Shortcut { get { lock (_gate) return _data.Shortcut ?? "Ctrl+Shift+V"; } }
+    public string? SourceLanguage { get { lock (_gate) return _data.SourceLanguage; } }
+    public string? TargetLanguage { get { lock (_gate) return _data.TargetLanguage; } }
+    public bool? AutoDetectSource { get { lock (_gate) return _data.AutoDetectSource; } }
     public IReadOnlyList<Models.CustomTone> CustomTones { get { lock (_gate) return _data.CustomTones?.ToList() ?? []; } }
     public (double Left, double Top)? PanelPosition
     {
@@ -38,6 +41,12 @@ public sealed class SettingsStore
 
     public void SetAppLanguage(string id) => Update(d => d.AppLanguage = id);
     public void SetShortcut(string shortcut) => Update(d => d.Shortcut = shortcut);
+    public void SetTranslationPreferences(string? sourceLanguage, string? targetLanguage, bool autoDetectSource) => Update(d =>
+    {
+        d.SourceLanguage = sourceLanguage;
+        d.TargetLanguage = targetLanguage;
+        d.AutoDetectSource = autoDetectSource;
+    });
     public void SetCustomTones(IReadOnlyList<Models.CustomTone> tones) => Update(d => d.CustomTones = tones.ToList());
     public void SetPanelPosition(double left, double top) => Update(d => { d.PanelLeft = left; d.PanelTop = top; });
 
@@ -79,6 +88,12 @@ public sealed class SettingsStore
         public string? AppLanguage { get; set; } = "en";
         [JsonPropertyName("verba.shortcut")]
         public string? Shortcut { get; set; } = "Ctrl+Shift+V";
+        [JsonPropertyName("verba.sourceLanguage")]
+        public string? SourceLanguage { get; set; }
+        [JsonPropertyName("verba.targetLanguage")]
+        public string? TargetLanguage { get; set; }
+        [JsonPropertyName("verba.autoDetectSource")]
+        public bool? AutoDetectSource { get; set; }
         [JsonPropertyName("verba.customTones")]
         public List<Models.CustomTone>? CustomTones { get; set; } = [];
         [JsonPropertyName("panel.left")]

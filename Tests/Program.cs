@@ -14,7 +14,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("undo/redo cursor and redo truncation", History),
     ("custom tone store deduplicates and caps MRU", ToneStore),
     ("source and result speech use their own text and language", SpeechSides),
-    ("shortcut parser and settings persistence", ShortcutSettings)
+    ("shortcut parser and settings persistence", ShortcutSettings),
+    ("language catalog fetches, caches, and expires after 24 hours", LanguageCatalogCache),
+    ("first launch follows Windows language and saves user choices", LanguageDefaults)
 };
 
 var failures = 0;
@@ -134,6 +136,74 @@ static Task ShortcutSettings()
     return Task.CompletedTask;
 }
 
+static async Task LanguageCatalogCache()
+{
+    var path = Path.Combine(Path.GetTempPath(), $"verba-languages-{Guid.NewGuid():N}.json");
+    const string json = """
+        {"languages":[
+          {"code":"vi","name":"Vietnamese","nativeName":"Tiếng Việt","flag":"🇻🇳","countryCode":"VN"},
+          {"code":"en","name":"English","nativeName":"English","flag":"🇬🇧","countryCode":"GB"}
+        ],"version":"b22b22d9ab2fb651"}
+        """;
+    var fetchedAt = new DateTimeOffset(2026, 8, 20, 0, 0, 0, TimeSpan.Zero);
+
+    try
+    {
+        var firstHandler = new LanguageHandler(json);
+        var first = new TranslationLanguageCatalog(new System.Net.Http.HttpClient(firstHandler), path);
+        Check(await first.RefreshIfStaleAsync(fetchedAt), "empty cache did not fetch");
+        Check(firstHandler.RequestCount == 1, "language endpoint was not called once");
+        Check(first.Version == "b22b22d9ab2fb651", "language version was not retained");
+        Check(first.Languages.Count == 2 && first.Languages[0] == new TranslationLanguage("vi", "Vietnamese", "Tiếng Việt", "🇻🇳", "VN"),
+            "language payload was not mapped");
+
+        var secondHandler = new LanguageHandler(json);
+        var cached = new TranslationLanguageCatalog(new System.Net.Http.HttpClient(secondHandler), path);
+        Check(cached.Languages.Count == 2, "cached languages were not loaded at startup");
+        Check(!await cached.RefreshIfStaleAsync(fetchedAt.AddHours(23).AddMinutes(59)), "fresh cache was refreshed early");
+        Check(secondHandler.RequestCount == 0, "fresh cache called the endpoint");
+        Check(await cached.RefreshIfStaleAsync(fetchedAt.AddHours(24)), "24-hour cache was not refreshed");
+        Check(secondHandler.RequestCount == 1, "expired cache did not call the endpoint");
+    }
+    finally
+    {
+        try { File.Delete(path); } catch { }
+        try { File.Delete(path + ".tmp"); } catch { }
+    }
+}
+
+static Task LanguageDefaults()
+{
+    var path = Path.Combine(Path.GetTempPath(), $"verba-language-defaults-{Guid.NewGuid():N}.json");
+    var cachePath = path + ".languages";
+    try
+    {
+        var settings = new SettingsStore(path);
+        var speech = new FakeSpeech();
+        using var vm = new TranslationViewModel(new FakeApi(), speech, settings,
+            new AppLanguageStore(settings), new CustomToneStore(settings),
+            new TranslationLanguageCatalog(cachePath: cachePath), "vi-VN");
+
+        Check(vm.IsAutoDetectSource, "source auto-detection was not enabled on first launch");
+        Check(vm.TargetLanguage.Id == "vi", "Windows UI language was not selected as the target");
+        Check(vm.TargetLanguage.Flag == "🇻🇳", "fallback language flag is missing");
+        Check(vm.SourceLanguage.Id == "en", "manual source fallback should differ from the target");
+
+        vm.SetAutoDetectSource(false);
+        vm.SetSourceLanguage(vm.Languages.Single(x => x.Id == "ja"));
+        vm.SetTargetLanguage(vm.Languages.Single(x => x.Id == "fr"));
+        var saved = new SettingsStore(path);
+        Check(saved.AutoDetectSource == false && saved.SourceLanguage == "ja" && saved.TargetLanguage == "fr",
+            "user language choices were not persisted");
+    }
+    finally
+    {
+        try { File.Delete(path); } catch { }
+        try { File.Delete(cachePath); } catch { }
+    }
+    return Task.CompletedTask;
+}
+
 static async Task Wait(TranslationViewModel vm)
 {
     var until = DateTime.UtcNow.AddSeconds(2);
@@ -161,6 +231,24 @@ sealed class FakeHandler(System.Net.Http.HttpResponseMessage response) : System.
     protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken cancellationToken) => Task.FromResult(response);
 }
 
+sealed class LanguageHandler(string json) : System.Net.Http.HttpMessageHandler
+{
+    public int RequestCount { get; private set; }
+
+    protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(
+        System.Net.Http.HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        RequestCount++;
+        if (request.Method != System.Net.Http.HttpMethod.Get ||
+            request.RequestUri?.AbsoluteUri != "https://dtindqvothjuqpmiytsi.supabase.co/functions/v1/languages")
+            throw new InvalidOperationException("language endpoint request is wrong");
+        return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json")
+        });
+    }
+}
+
 sealed class FakeSpeech : ISpeechService
 {
     public event EventHandler<bool>? SpeakingChanged;
@@ -186,8 +274,17 @@ sealed class Harness : IDisposable
     {
         api ??= new FakeApi(); var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"verba-test-{Guid.NewGuid():N}.json");
         var speech = new FakeSpeech();
-        var settings = new SettingsStore(path); var vm = new TranslationViewModel(api, speech, settings, new AppLanguageStore(settings), new CustomToneStore(settings));
+        var settings = new SettingsStore(path);
+        settings.SetTranslationPreferences("vi", "en", false);
+        var languageCachePath = path + ".languages";
+        var vm = new TranslationViewModel(api, speech, settings, new AppLanguageStore(settings),
+            new CustomToneStore(settings), new TranslationLanguageCatalog(cachePath: languageCachePath));
         return new Harness(vm, api, speech, path);
     }
-    public void Dispose() { Vm.Dispose(); try { File.Delete(Path); } catch { } }
+    public void Dispose()
+    {
+        Vm.Dispose();
+        try { File.Delete(Path); } catch { }
+        try { File.Delete(Path + ".languages"); } catch { }
+    }
 }

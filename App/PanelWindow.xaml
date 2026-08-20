@@ -67,12 +67,12 @@
                         <Style.Triggers><DataTrigger Binding="{Binding IsAutoDetectSource}" Value="True"><Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/></DataTrigger></Style.Triggers>
                     </Style></Button.Style>
                 </Button>
-                <ComboBox x:Name="SourceLanguageBox" Grid.Column="1" Margin="6,0" ItemsSource="{Binding Languages}" ItemTemplate="{StaticResource LanguageTemplate}"
+                <ComboBox x:Name="SourceLanguageBox" Grid.Column="1" Margin="6,0" ItemsSource="{Binding Languages}" SelectedValuePath="Id" SelectedValue="{Binding SourceLanguage.Id, Mode=OneWay}" ItemTemplate="{StaticResource LanguageTemplate}"
                           SelectionChanged="SourceLanguage_SelectionChanged" IsEnabled="{Binding IsTranslating, Converter={StaticResource InverseBool}}">
                     <ComboBox.Style><Style TargetType="ComboBox"><Style.Triggers><DataTrigger Binding="{Binding IsAutoDetectSource}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></ComboBox.Style>
                 </ComboBox>
                 <Button Grid.Column="2" Content="⇄" Style="{StaticResource FlatButton}" Click="Swap_Click" IsEnabled="{Binding CanSwapNow}" ToolTip="{Binding SwapTooltip}"/>
-                <ComboBox x:Name="TargetLanguageBox" Grid.Column="3" Margin="6,0" ItemsSource="{Binding Languages}" ItemTemplate="{StaticResource LanguageTemplate}"
+                <ComboBox x:Name="TargetLanguageBox" Grid.Column="3" Margin="6,0" ItemsSource="{Binding Languages}" SelectedValuePath="Id" SelectedValue="{Binding TargetLanguage.Id, Mode=OneWay}" ItemTemplate="{StaticResource LanguageTemplate}"
                           SelectionChanged="TargetLanguage_SelectionChanged" IsEnabled="{Binding IsTranslating, Converter={StaticResource InverseBool}}"/>
                 <TextBlock Grid.Column="5" VerticalAlignment="Center" Foreground="{DynamicResource MutedBrush}" FontSize="11" Margin="8,0" Text="{Binding TrialText}"/>
                 <Button Grid.Column="6" Content="⚙" Style="{StaticResource FlatButton}" Click="Gear_Click"/>

@@ -812,6 +812,9 @@ easier to debug).
 |---|---|---|
 | `verba.deviceId` | string | UUID generated on first run, **never changes**. Sent with every request; the server scopes trial/usage state to it. |
 | `verba.appLanguage` | string | `"en"` / `"vi"` / `"ko"`. Defaults to `"en"`. |
+| `verba.sourceLanguage` | string? | Last manually selected source language code. |
+| `verba.targetLanguage` | string? | Last manually selected target language code. |
+| `verba.autoDetectSource` | bool? | Last source auto-detection choice; defaults to `true` on first launch. |
 | `verba.customTones` | JSON array | The user's own saved tones. |
 | (new) panel position | 2 numbers | `Left` / `Top`. Discard if it falls outside every display. |
 
@@ -934,7 +937,14 @@ Tone and action chip labels: see §4.7 and the table below.
 The macOS-only strings — `CheckAccessibility`, `OpenSystemSettings`,
 `PermissionTitle`, `PermissionBody`, `EditSource` — should be **dropped**.
 
-### 7.3 Translation language list (20 entries, fixed)
+### 7.3 Translation language list
+
+The translation language picker is populated from
+`GET https://dtindqvothjuqpmiytsi.supabase.co/functions/v1/languages`. Load the
+cached response at startup, refresh it in the background when it is at least 24
+hours old, and continue refreshing every 24 hours while the app remains open.
+Network or invalid-response failures must leave the last valid cached list in
+place. The built-in list below is the offline fallback before any cache exists.
 
 `ar`, `zh-Hans`, `zh-Hant`, `nl`, `en`, `fr`, `de`, `hi`, `id`, `it`, `ja`,
 `ko`, `pl`, `pt-BR`, `ru`, `es`, `th`, `tr`, `uk`, `vi`.
@@ -953,7 +963,11 @@ public string Name(AppLanguage appLang) {
 (.NET uses ICU, so `zh-Hans` and `pt-BR` are both valid. Wrap in try/catch
 anyway.)
 
-Defaults: source `vi`, target `en`.
+On first launch, source auto-detection is enabled and the target is matched to
+the Windows UI culture (exact tag, then country/base language), falling back to
+English. Persist the user's source, target, and auto-detect choices for later
+launches. Combo-box selection is keyed by language code so a catalog refresh
+does not clear the current choice.
 
 ---
 

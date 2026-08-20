@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using verba_windows.Models;
 using verba_windows.Services;
 using verba_windows.Utilities;
@@ -12,6 +13,10 @@ public sealed class TranslationViewModel : ObservableObject, IDisposable
     private readonly ISpeechService _speech;
     private readonly SettingsStore _settings;
     private readonly CustomToneStore _customTones;
+    private readonly TranslationLanguageCatalog _languageCatalog;
+    private readonly string _systemLanguageId;
+    private bool _hasSourcePreference;
+    private bool _hasTargetPreference;
     private CancellationTokenSource? _pending;
     private string? _inFlightSourceText;
     private string _sourceText = "";
@@ -29,21 +34,26 @@ public sealed class TranslationViewModel : ObservableObject, IDisposable
     private int _historyIndex = -1;
 
     public TranslationViewModel(ITranslationApiService service, ISpeechService speech, SettingsStore settings,
-        AppLanguageStore languageStore, CustomToneStore customTones)
+        AppLanguageStore languageStore, CustomToneStore customTones, TranslationLanguageCatalog? languageCatalog = null,
+        string? systemLanguageId = null)
     {
         _service = service;
         _speech = speech;
         _settings = settings;
         LanguageStore = languageStore;
         _customTones = customTones;
+        _languageCatalog = languageCatalog ?? new TranslationLanguageCatalog();
+        _systemLanguageId = systemLanguageId ?? CultureInfo.CurrentUICulture.Name;
+        InitializeLanguagePreferences();
         CustomTones = customTones.Tones;
         _speech.SpeakingChanged += OnSpeakingChanged;
         LanguageStore.PropertyChanged += OnLanguageChanged;
+        _languageCatalog.LanguagesChanged += OnLanguagesChanged;
     }
 
     public AppLanguageStore LanguageStore { get; }
     public Strings Strings => LanguageStore.Strings;
-    public IReadOnlyList<TranslationLanguage> Languages => TranslationLanguage.All;
+    public IReadOnlyList<TranslationLanguage> Languages => _languageCatalog.Languages;
     public ObservableCollection<CustomTone> CustomTones { get; }
     public HashSet<RefineAction> Actions { get; } = [];
 
@@ -157,6 +167,8 @@ public sealed class TranslationViewModel : ObservableObject, IDisposable
     {
         if (IsTranslating || enabled == IsAutoDetectSource) return;
         IsAutoDetectSource = enabled;
+        if (!enabled) _hasSourcePreference = true;
+        SaveLanguagePreferences();
         if (!IsEmptyState) Start(null, true);
     }
 
@@ -164,6 +176,8 @@ public sealed class TranslationViewModel : ObservableObject, IDisposable
     {
         if (IsTranslating || SourceLanguage == language) return;
         SourceLanguage = language;
+        _hasSourcePreference = true;
+        SaveLanguagePreferences();
         if (!IsEmptyState) Start(null, true);
     }
 
@@ -171,6 +185,8 @@ public sealed class TranslationViewModel : ObservableObject, IDisposable
     {
         if (IsTranslating || TargetLanguage == language) return;
         TargetLanguage = language;
+        _hasTargetPreference = true;
+        SaveLanguagePreferences();
         if (!IsEmptyState) Start(null, true);
     }
 
@@ -178,6 +194,8 @@ public sealed class TranslationViewModel : ObservableObject, IDisposable
     {
         if (!CanSwapLanguages || IsTranslating) return;
         (SourceLanguage, TargetLanguage) = (TargetLanguage, SourceLanguage);
+        _hasSourcePreference = _hasTargetPreference = true;
+        SaveLanguagePreferences();
         if (TranslatedText.Length > 0) { SourceText = TranslatedText; TranslatedText = ""; }
         Start(null, true);
     }
@@ -340,6 +358,85 @@ public sealed class TranslationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(SourceLanguageName)); OnPropertyChanged(nameof(TargetLanguageName)); OnPropertyChanged(nameof(TrialText));
     }
 
+    private void OnLanguagesChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(nameof(Languages));
+        ApplyLanguageCatalog();
+    }
+
+    private void ApplyLanguageCatalog()
+    {
+        if (_languageCatalog.Languages.Count == 0) return;
+        TargetLanguage = _hasTargetPreference
+            ? FindLanguage(TargetLanguage.Id) ?? ResolveSystemTarget()
+            : ResolveSystemTarget();
+        SourceLanguage = _hasSourcePreference
+            ? FindLanguage(SourceLanguage.Id) ?? ResolveDefaultSource(TargetLanguage)
+            : ResolveDefaultSource(TargetLanguage);
+    }
+
+    private void InitializeLanguagePreferences()
+    {
+        _hasSourcePreference = !string.IsNullOrWhiteSpace(_settings.SourceLanguage);
+        _hasTargetPreference = !string.IsNullOrWhiteSpace(_settings.TargetLanguage);
+        _isAutoDetectSource = _settings.AutoDetectSource ?? true;
+        _targetLanguage = FindLanguage(_settings.TargetLanguage) ?? ResolveSystemTarget();
+        _sourceLanguage = FindLanguage(_settings.SourceLanguage) ?? ResolveDefaultSource(_targetLanguage);
+    }
+
+    private TranslationLanguage ResolveSystemTarget()
+    {
+        var exact = FindLanguage(_systemLanguageId);
+        if (exact is not null) return exact;
+
+        var parts = _systemLanguageId.Split('-', StringSplitOptions.RemoveEmptyEntries);
+        var baseId = parts.FirstOrDefault();
+        if (parts.Length > 1)
+        {
+            var country = parts[^1];
+            if (baseId?.Equals("zh", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                var simplified = country.Equals("CN", StringComparison.OrdinalIgnoreCase)
+                    || country.Equals("SG", StringComparison.OrdinalIgnoreCase);
+                var traditional = country.Equals("TW", StringComparison.OrdinalIgnoreCase)
+                    || country.Equals("HK", StringComparison.OrdinalIgnoreCase)
+                    || country.Equals("MO", StringComparison.OrdinalIgnoreCase);
+                if (simplified || traditional)
+                {
+                    var chineseMatch = FindLanguage(simplified ? "zh-Hans" : "zh-Hant");
+                    if (chineseMatch is not null) return chineseMatch;
+                }
+            }
+
+            var baseCandidate = FindLanguage(baseId)
+                ?? _languageCatalog.Languages.FirstOrDefault(x =>
+                    x.Id.StartsWith(baseId + "-", StringComparison.OrdinalIgnoreCase));
+            if (baseCandidate is not null) return baseCandidate;
+
+            var countryMatch = _languageCatalog.Languages.FirstOrDefault(x =>
+                x.CountryCode.Equals(country, StringComparison.OrdinalIgnoreCase));
+            if (countryMatch is not null) return countryMatch;
+        }
+
+        var baseMatch = FindLanguage(baseId);
+        return baseMatch ?? FindLanguage("en") ?? _languageCatalog.Languages[0];
+    }
+
+    private TranslationLanguage ResolveDefaultSource(TranslationLanguage target) =>
+        _languageCatalog.Languages.FirstOrDefault(x =>
+            x.Id.Equals("en", StringComparison.OrdinalIgnoreCase)
+            && !x.Id.Equals(target.Id, StringComparison.OrdinalIgnoreCase))
+        ?? _languageCatalog.Languages.FirstOrDefault(x => !x.Id.Equals(target.Id, StringComparison.OrdinalIgnoreCase))
+        ?? target;
+
+    private TranslationLanguage? FindLanguage(string? id) => string.IsNullOrWhiteSpace(id) ? null :
+        _languageCatalog.Languages.FirstOrDefault(x => x.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+
+    private void SaveLanguagePreferences() => _settings.SetTranslationPreferences(
+        _hasSourcePreference ? SourceLanguage.Id : null,
+        _hasTargetPreference ? TargetLanguage.Id : null,
+        IsAutoDetectSource);
+
     private void RaiseComputed()
     {
         OnPropertyChanged(nameof(IsEmptyState)); OnPropertyChanged(nameof(CanSwapLanguages)); OnPropertyChanged(nameof(CanSwapNow)); OnPropertyChanged(nameof(CanUndo));
@@ -360,7 +457,9 @@ public sealed class TranslationViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _pending?.Cancel(); _pending?.Dispose(); _speech.SpeakingChanged -= OnSpeakingChanged;
-        LanguageStore.PropertyChanged -= OnLanguageChanged; _speech.Dispose();
+        LanguageStore.PropertyChanged -= OnLanguageChanged;
+        _languageCatalog.LanguagesChanged -= OnLanguagesChanged;
+        _speech.Dispose();
     }
 
     private enum SpeechSide { None, Source, Result }

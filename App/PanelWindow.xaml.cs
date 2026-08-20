@@ -20,8 +20,6 @@ public partial class PanelWindow : Window
         InitializeComponent();
         DataContext = ViewModel = viewModel;
         ApplyTheme();
-        SourceLanguageBox.SelectedItem = viewModel.SourceLanguage;
-        TargetLanguageBox.SelectedItem = viewModel.TargetLanguage;
         viewModel.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(viewModel.IsTranslating)) UpdateToneSaveState(); };
         _initializing = false;
     }

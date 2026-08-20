@@ -1,15 +1,34 @@
 namespace verba_windows.Models;
 
-public sealed record TranslationLanguage(string Id, string EnglishName)
+public sealed record TranslationLanguage(
+    string Id,
+    string EnglishName,
+    string NativeName = "",
+    string Flag = "",
+    string CountryCode = "")
 {
     public static readonly IReadOnlyList<TranslationLanguage> All =
     [
-        new("ar", "Arabic"), new("zh-Hans", "Chinese (Simplified)"), new("zh-Hant", "Chinese (Traditional)"),
-        new("nl", "Dutch"), new("en", "English"), new("fr", "French"), new("de", "German"),
-        new("hi", "Hindi"), new("id", "Indonesian"), new("it", "Italian"), new("ja", "Japanese"),
-        new("ko", "Korean"), new("pl", "Polish"), new("pt-BR", "Portuguese (Brazil)"),
-        new("ru", "Russian"), new("es", "Spanish"), new("th", "Thai"), new("tr", "Turkish"),
-        new("uk", "Ukrainian"), new("vi", "Vietnamese")
+        new("ar", "Arabic", Flag: "🇸🇦", CountryCode: "SA"),
+        new("zh-Hans", "Chinese (Simplified)", Flag: "🇨🇳", CountryCode: "CN"),
+        new("zh-Hant", "Chinese (Traditional)", Flag: "🇹🇼", CountryCode: "TW"),
+        new("nl", "Dutch", Flag: "🇳🇱", CountryCode: "NL"),
+        new("en", "English", Flag: "🇬🇧", CountryCode: "GB"),
+        new("fr", "French", Flag: "🇫🇷", CountryCode: "FR"),
+        new("de", "German", Flag: "🇩🇪", CountryCode: "DE"),
+        new("hi", "Hindi", Flag: "🇮🇳", CountryCode: "IN"),
+        new("id", "Indonesian", Flag: "🇮🇩", CountryCode: "ID"),
+        new("it", "Italian", Flag: "🇮🇹", CountryCode: "IT"),
+        new("ja", "Japanese", Flag: "🇯🇵", CountryCode: "JP"),
+        new("ko", "Korean", Flag: "🇰🇷", CountryCode: "KR"),
+        new("pl", "Polish", Flag: "🇵🇱", CountryCode: "PL"),
+        new("pt-BR", "Portuguese (Brazil)", Flag: "🇧🇷", CountryCode: "BR"),
+        new("ru", "Russian", Flag: "🇷🇺", CountryCode: "RU"),
+        new("es", "Spanish", Flag: "🇪🇸", CountryCode: "ES"),
+        new("th", "Thai", Flag: "🇹🇭", CountryCode: "TH"),
+        new("tr", "Turkish", Flag: "🇹🇷", CountryCode: "TR"),
+        new("uk", "Ukrainian", Flag: "🇺🇦", CountryCode: "UA"),
+        new("vi", "Vietnamese", Flag: "🇻🇳", CountryCode: "VN")
     ];
 
     public static TranslationLanguage FromId(string id) =>

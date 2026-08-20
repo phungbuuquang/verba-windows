@@ -12,6 +12,7 @@ public partial class App : System.Windows.Application
     private AppHost.PanelController? _controller;
     private AppHost.TrayIcon? _tray;
     private Services.AppUpdateService? _updates;
+    private Services.TranslationLanguageCatalog? _languageCatalog;
     private readonly CancellationTokenSource _shutdown = new();
     private bool _checkingForUpdates;
 
@@ -39,8 +40,10 @@ public partial class App : System.Windows.Application
         var settings = new Services.SettingsStore();
         var language = new Services.AppLanguageStore(settings);
         var tones = new Services.CustomToneStore(settings);
+        _languageCatalog = new Services.TranslationLanguageCatalog();
         var speech = new Services.SpeechService(Dispatcher);
-        var viewModel = new ViewModels.TranslationViewModel(new Services.TranslationApiService(), speech, settings, language, tones);
+        var viewModel = new ViewModels.TranslationViewModel(
+            new Services.TranslationApiService(), speech, settings, language, tones, _languageCatalog);
         var window = new AppHost.PanelWindow(viewModel);
         _controller = new AppHost.PanelController(window, viewModel, new Services.Win32SelectionCapture(), settings);
         _controller.QuitRequested += Quit;
@@ -51,6 +54,7 @@ public partial class App : System.Windows.Application
         _tray.ApplyUpdateRequested += (_, _) => ApplyUpdateAndRestart();
         System.Diagnostics.Trace.WriteLine($"Tray icon initialized; {_controller.ShortcutText} registered={_controller.HotkeyRegistered}");
         _ = CheckForUpdatesAfterStartupAsync();
+        _ = _languageCatalog.RunAsync(_shutdown.Token);
     }
 
     private async Task CheckForUpdatesAfterStartupAsync()
