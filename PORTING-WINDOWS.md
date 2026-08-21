@@ -57,7 +57,7 @@ Content-Type: application/json
     { "instruction": "initial", "resultText": "..." },
     { "instruction": "shorter", "resultText": "..." }
   ],
-  "refinementInstruction": "shorter, more natural"   // null on the first translate
+  "instruction": "shorter, more natural"   // null on the first translate
 }
 ```
 
@@ -67,8 +67,8 @@ Content-Type: application/json
 |---|---|
 | `sourceLang` | When `IsAutoDetectSource == true`, **omit the key entirely** (not `null`, not `""`). The server infers the language. |
 | `tone` | Accepts exactly three values: `"casual" \| "neutral" \| "formal"`. While the user has **not** picked a tone, **omit the key**. The server decides what an untoned translation sounds like; the client must **not** substitute `"neutral"`. |
-| `tone` (custom) | A tone the user wrote themselves does **not** go in `tone`. It is prepended to `refinementInstruction` as `use this tone: <what the user typed>` — including on the **initial** translate, which is the one case where that key would otherwise be `null`. |
-| `refinementInstruction` | `null` on the first translate of a new source text (except for the custom-tone case above). |
+| `tone` (custom) | A tone the user wrote themselves does **not** go in `tone`. It is prepended to `instruction` as `use this tone: <what the user typed>` — including on the **initial** translate, which is the one case where that key would otherwise be `null`. |
+| `instruction` | `null` on the first translate of a new source text (except for the custom-tone case above). |
 | `history` | Reset to `[]` whenever the source text changes, languages are swapped, or auto-detect is toggled. |
 
 In C#, "omit the key" means `JsonIgnoreCondition.WhenWritingNull` on the
@@ -93,8 +93,8 @@ public sealed class TranslateRequest
     [JsonPropertyName("history")]
     public IReadOnlyList<HistoryEntry> History { get; init; } = [];
 
-    [JsonPropertyName("refinementInstruction")]
-    public string? RefinementInstruction { get; init; }   // sent explicitly as null
+    [JsonPropertyName("instruction")]
+    public string? Instruction { get; init; }   // sent explicitly as null
 }
 
 public sealed record HistoryEntry(
@@ -103,7 +103,7 @@ public sealed record HistoryEntry(
 ```
 
 Note the asymmetry: `sourceLang` and `tone` **disappear from the JSON** when
-null, while `refinementInstruction` is **still sent as `null`**. (Swift's
+null, while `instruction` is **still sent as `null`**. (Swift's
 `Encodable` drops nil optionals, so the mac client omits it too; the server
 accepts both. Sending `null` keeps it aligned with the spec written in
 CLAUDE.md.)
@@ -266,7 +266,7 @@ Start(instruction: null, resetHistory: true);
 #### `ApplyRefinement()` — tone or action chip toggled
 ```csharp
 if (IsTranslating || IsEmptyState) return;
-Start(instruction: RefinementInstruction, resetHistory: false);
+Start(instruction: Instruction, resetHistory: false);
 ```
 
 #### `ApplyFreeform()` — Enter or send button in the freeform field
@@ -359,7 +359,7 @@ private async Task RunAsync(string? instruction, bool resetHistory, Cancellation
         TargetLang = TargetLanguage.Id,
         Tone       = Tone?.ApiValue,
         History    = History.ToList(),
-        RefinementInstruction = outgoing,
+        Instruction = outgoing,
     };
 
     try {
@@ -391,7 +391,7 @@ something the user did wrong** — it must never land in the error banner.
 
 ```csharp
 // Action chips + freeform (used by ApplyRefinement)
-private string? RefinementInstruction {
+private string? Instruction {
     get {
         var parts = Actions.Select(a => a.Instruction)
                            .Concat(Freeform.Length == 0 ? [] : new[]{ Freeform })
@@ -1095,7 +1095,7 @@ Pass the `CancellationToken` straight through to `SendAsync`.
 ### Must be exact (wrong here breaks logic or the server cache)
 - [ ] `sourceLang` **disappears from the JSON** under auto-detect — not `null`.
 - [ ] `tone` **disappears from the JSON** when no tone is picked; the client never substitutes `"neutral"`.
-- [ ] A custom tone goes into `refinementInstruction` (`use this tone: …`), **including on the first translate**.
+- [ ] A custom tone goes into `instruction` (`use this tone: …`), **including on the first translate**.
 - [ ] Decode the error envelope **before** checking the status code (failures can be HTTP 200).
 - [ ] `history` resets on: source text change, language swap, auto-detect toggle. It does **not** reset on refinements.
 - [ ] Model-facing strings stay English: action chip instructions, `"initial"`, `"use this tone: "`.

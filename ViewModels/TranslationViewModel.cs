@@ -150,7 +150,7 @@ public sealed class TranslationViewModel : ObservableObject, IDisposable
     public void ApplyRefinement()
     {
         if (IsTranslating || IsEmptyState) return;
-        Start(RefinementInstruction, false);
+        Start(Instruction, false);
     }
 
     public void ApplyFreeform()
@@ -278,7 +278,7 @@ public sealed class TranslationViewModel : ObservableObject, IDisposable
         _speech.Speak(text, languageId);
     }
 
-    private string? RefinementInstruction
+    private string? Instruction
     {
         get
         {
@@ -314,7 +314,7 @@ public sealed class TranslationViewModel : ObservableObject, IDisposable
         {
             DeviceId = _settings.GetOrCreateDeviceId(), SourceText = text,
             SourceLang = IsAutoDetectSource ? null : SourceLanguage.Id, TargetLang = TargetLanguage.Id,
-            Tone = Tone?.ApiValue, History = _history.ToList(), RefinementInstruction = outgoing
+            Tone = Tone?.ApiValue, History = _history.ToList(), Instruction = outgoing
         };
         try
         {

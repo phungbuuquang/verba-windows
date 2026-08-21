@@ -14,7 +14,7 @@ public sealed class TranslateRequest
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Tone { get; init; }
     [JsonPropertyName("history")] public IReadOnlyList<HistoryEntry> History { get; init; } = [];
-    [JsonPropertyName("refinementInstruction")] public string? RefinementInstruction { get; init; }
+    [JsonPropertyName("instruction")] public string? Instruction { get; init; }
 }
 
 public sealed record HistoryEntry(

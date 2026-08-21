@@ -7,7 +7,7 @@ using verba_windows.ViewModels;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
-    ("JSON omits sourceLang and tone but keeps null refinementInstruction", JsonContract),
+    ("JSON omits sourceLang and tone but keeps null instruction", JsonContract),
     ("HTTP 200 error envelopes are classified before success", ErrorEnvelope),
     ("custom tone is model-facing refinement text", CustomToneInstruction),
     ("new source cancels an in-flight request without an error", Cancellation),
@@ -31,11 +31,12 @@ return failures;
 
 static Task JsonContract()
 {
-    var request = new TranslateRequest { DeviceId="d", SourceText="x", SourceLang=null, TargetLang="en", Tone=null, History=[], RefinementInstruction=null };
+    var request = new TranslateRequest { DeviceId="d", SourceText="x", SourceLang=null, TargetLang="en", Tone=null, History=[], Instruction=null };
     using var json = JsonDocument.Parse(JsonSerializer.Serialize(request));
     Check(!json.RootElement.TryGetProperty("sourceLang", out _), "sourceLang was serialized");
     Check(!json.RootElement.TryGetProperty("tone", out _), "tone was serialized");
-    Check(json.RootElement.GetProperty("refinementInstruction").ValueKind == JsonValueKind.Null, "refinementInstruction null missing");
+    Check(json.RootElement.GetProperty("instruction").ValueKind == JsonValueKind.Null, "instruction null missing");
+    Check(!json.RootElement.TryGetProperty("refinementInstruction", out _), "legacy refinementInstruction was serialized");
     return Task.CompletedTask;
 }
 
@@ -62,7 +63,7 @@ static async Task CustomToneInstruction()
     await Wait(harness.Vm);
     var request = harness.Api.Requests.Single();
     Check(request.Tone is null, "custom tone leaked into tone");
-    Check(request.RefinementInstruction == "use this tone: warm and concise", "custom tone instruction is wrong");
+    Check(request.Instruction == "use this tone: warm and concise", "custom tone instruction is wrong");
     harness.Dispose();
 }
 
