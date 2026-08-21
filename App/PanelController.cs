@@ -66,11 +66,18 @@ public sealed class PanelController : IDisposable
             System.Diagnostics.Trace.WriteLine($"Panel shown: visible={_window.IsVisible}, handle={new System.Windows.Interop.WindowInteropHelper(_window).Handle}");
             if (!string.IsNullOrWhiteSpace(selected))
             {
-                _viewModel.SourceText = selected; _window.FocusInitial(true); _viewModel.TranslateNow();
+                _viewModel.TranslateExternalSelection(selected); _window.FocusInitial(true);
             }
             else _window.FocusInitial();
         }
         finally { _opening = false; }
+    }
+
+    public void ShowSelection(string selected)
+    {
+        if (_disposed || !_viewModel.TranslateExternalSelection(selected)) return;
+        PositionWindow();
+        _window.Show(); ClampToWorkingArea(); _window.Activate(); _window.FocusInitial(true);
     }
 
     public void Hide()

@@ -2,6 +2,7 @@ namespace verba_windows.Utilities;
 
 public sealed partial class Strings
 {
+    public string TranslateWithVerba => Pick("Translate with Verba", "Dịch với Verba", "Verba로 번역");
     public string OpenVerba => Pick("Open verba", "Mở verba", "verba 열기");
     public string OpenVerbaWithShortcut(string shortcut) => Pick(
         $"Open verba ({shortcut})", $"Mở verba ({shortcut})", $"verba 열기 ({shortcut})");

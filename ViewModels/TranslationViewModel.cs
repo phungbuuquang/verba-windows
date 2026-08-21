@@ -139,6 +139,14 @@ public sealed class TranslationViewModel : ObservableObject, IDisposable
         Start(null, true);
     }
 
+    public bool TranslateExternalSelection(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        SourceText = text.Trim();
+        TranslateNow();
+        return true;
+    }
+
     public void ApplyRefinement()
     {
         if (IsTranslating || IsEmptyState) return;

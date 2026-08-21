@@ -782,6 +782,25 @@ harmful* (it would trash the clipboard continuously). Proposal for Windows:
 hotkey (`Ctrl+Shift+V`) via `RegisterHotKey` — clicking a tray icon forces
 the user to move the mouse away from what they just selected.
 
+### 5.3.1 Selection translation popup
+
+Verba uses a `WH_MOUSE_LL` hook to present a no-activate translation popup after
+the user finishes selecting text with the left mouse button:
+
+- On left-button up, debounce for about 150ms so the target application can
+  commit its selection, then perform an **UI Automation-only** selection read.
+  Never use the clipboard from this background path.
+- Show `Translate with Verba` only when a non-empty text selection was found.
+  The popup must not take focus from the source app.
+- Clicking the popup passes the captured text directly to the panel, focuses
+  the refinement field, and starts a base translation.
+- Hide the popup on the next external click and before any right-click so it
+  never overlaps an application's context menu. Ignore clicks inside Verba
+  itself, cancel stale probes, and remove the hook during application shutdown.
+
+Applications that do not expose their selection through UI Automation continue
+to use the global shortcut and its clipboard fallback.
+
 ### 5.4 Permissions
 
 macOS requires **Accessibility** permission; the app shows a `PermissionBanner`

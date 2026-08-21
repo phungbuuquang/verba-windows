@@ -4,11 +4,11 @@ using verba_windows.Utilities;
 
 namespace verba_windows.Services;
 
-public sealed class Win32SelectionCapture : ISelectionCapture
+public sealed class Win32SelectionCapture : ISelectionCapture, ISelectionProbe
 {
     public async Task<string?> CaptureAsync(nint foregroundWindow, CancellationToken cancellationToken = default)
     {
-        var uiaTask = Task.Run(ReadWithAutomation, cancellationToken);
+        var uiaTask = Task.Run(() => ReadWithAutomation(null), cancellationToken);
         var finished = await Task.WhenAny(uiaTask, Task.Delay(250, cancellationToken));
         if (finished == uiaTask)
         {
@@ -18,25 +18,52 @@ public sealed class Win32SelectionCapture : ISelectionCapture
         return await ReadWithClipboardAsync(foregroundWindow, cancellationToken);
     }
 
-    private static string? ReadWithAutomation()
+    public async Task<string?> CaptureWithAutomationAsync(
+        System.Drawing.Point screenPoint,
+        CancellationToken cancellationToken = default)
+    {
+        var uiaTask = Task.Run(() => ReadWithAutomation(screenPoint), cancellationToken);
+        var finished = await Task.WhenAny(uiaTask, Task.Delay(250, cancellationToken));
+        if (finished != uiaTask) return null;
+        var text = await uiaTask;
+        return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+    }
+
+    private static string? ReadWithAutomation(System.Drawing.Point? screenPoint)
     {
         try
         {
-            var focused = AutomationElement.FocusedElement;
-            if (focused?.TryGetCurrentPattern(TextPattern.Pattern, out var pattern) == true)
+            var candidates = new List<AutomationElement?> { AutomationElement.FocusedElement };
+            if (screenPoint is { } point)
             {
-                var ranges = ((TextPattern)pattern).GetSelection();
-                if (ranges.Length > 0)
+                var element = AutomationElement.FromPoint(new System.Windows.Point(point.X, point.Y));
+                for (var depth = 0; element is not null && depth < 8; depth++)
                 {
-                    var text = ranges[0].GetText(-1);
-                    return string.IsNullOrWhiteSpace(text) ? null : text;
+                    candidates.Add(element);
+                    element = TreeWalker.ControlViewWalker.GetParent(element);
                 }
+            }
+
+            foreach (var candidate in candidates.Distinct())
+            {
+                var text = ReadSelection(candidate);
+                if (!string.IsNullOrWhiteSpace(text)) return text;
             }
         }
         catch (ElementNotAvailableException) { }
         catch (InvalidOperationException) { }
         catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"UI Automation selection failed: {ex.Message}"); }
         return null;
+    }
+
+    private static string? ReadSelection(AutomationElement? element)
+    {
+        if (element?.TryGetCurrentPattern(TextPattern.Pattern, out var pattern) != true) return null;
+        var selected = ((TextPattern)pattern).GetSelection()
+            .Select(range => range.GetText(-1))
+            .Where(text => !string.IsNullOrWhiteSpace(text));
+        var text = string.Join(Environment.NewLine, selected);
+        return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 
     private static async Task<string?> ReadWithClipboardAsync(nint foregroundWindow, CancellationToken cancellationToken)

@@ -11,6 +11,7 @@ public partial class App : System.Windows.Application
     private Mutex? _mutex;
     private AppHost.PanelController? _controller;
     private AppHost.TrayIcon? _tray;
+    private AppHost.SelectionTranslateService? _selectionTranslate;
     private Services.AppUpdateService? _updates;
     private Services.TranslationLanguageCatalog? _languageCatalog;
     private readonly CancellationTokenSource _shutdown = new();
@@ -45,13 +46,22 @@ public partial class App : System.Windows.Application
         var viewModel = new ViewModels.TranslationViewModel(
             new Services.TranslationApiService(), speech, settings, language, tones, _languageCatalog);
         var window = new AppHost.PanelWindow(viewModel);
-        _controller = new AppHost.PanelController(window, viewModel, new Services.Win32SelectionCapture(), settings);
+        var selection = new Services.Win32SelectionCapture();
+        _controller = new AppHost.PanelController(window, viewModel, selection, settings);
         _controller.QuitRequested += Quit;
         _updates = new Services.AppUpdateService();
         _tray = new AppHost.TrayIcon(_controller, language, _updates.IsInstalled);
         _tray.QuitRequested += Quit;
         _tray.CheckForUpdatesRequested += async (_, _) => await CheckForUpdatesAsync(true);
         _tray.ApplyUpdateRequested += (_, _) => ApplyUpdateAndRestart();
+        try
+        {
+            _selectionTranslate = new AppHost.SelectionTranslateService(_controller, selection, language);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"Selection translation popup unavailable: {ex}");
+        }
         System.Diagnostics.Trace.WriteLine($"Tray icon initialized; {_controller.ShortcutText} registered={_controller.HotkeyRegistered}");
         _ = CheckForUpdatesAfterStartupAsync();
         _ = _languageCatalog.RunAsync(_shutdown.Token);
@@ -120,7 +130,7 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e)
     {
         _shutdown.Cancel();
-        _tray?.Dispose(); _controller?.Dispose();
+        _selectionTranslate?.Dispose(); _tray?.Dispose(); _controller?.Dispose();
         try { _mutex?.ReleaseMutex(); } catch { }
         _mutex?.Dispose();
         _shutdown.Dispose();

@@ -14,6 +14,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("undo/redo cursor and redo truncation", History),
     ("custom tone store deduplicates and caps MRU", ToneStore),
     ("source and result speech use their own text and language", SpeechSides),
+    ("external selection starts a trimmed translation", ExternalSelection),
+    ("selection popup translation action is localized", SelectionPopupLocalization),
     ("shortcut parser and settings persistence", ShortcutSettings),
     ("language catalog fetches, caches, and expires after 24 hours", LanguageCatalogCache),
     ("first launch follows Windows language and saves user choices", LanguageDefaults)
@@ -116,6 +118,28 @@ static async Task SpeechSides()
     harness.Vm.ToggleSourceSpeech();
     Check(harness.Vm.IsSpeakingSource && !harness.Vm.IsSpeakingResult, "switching speech sides left the wrong side active");
     harness.Dispose();
+}
+
+static async Task ExternalSelection()
+{
+    var harness = Harness.Create();
+    Check(harness.Vm.TranslateExternalSelection("  selected text\r\n"), "valid selection was rejected");
+    await Wait(harness.Vm);
+    Check(harness.Vm.SourceText == "selected text", "external selection was not trimmed");
+    Check(harness.Api.Requests.Single().SourceText == "selected text", "external selection was not translated");
+    Check(!harness.Vm.TranslateExternalSelection(" \r\n "), "blank selection was accepted");
+    harness.Dispose();
+}
+
+static Task SelectionPopupLocalization()
+{
+    Check(new verba_windows.Utilities.Strings(AppLanguage.En).TranslateWithVerba == "Translate with Verba",
+        "English selection popup action is wrong");
+    Check(new verba_windows.Utilities.Strings(AppLanguage.Vi).TranslateWithVerba == "Dịch với Verba",
+        "Vietnamese selection popup action is wrong");
+    Check(new verba_windows.Utilities.Strings(AppLanguage.Ko).TranslateWithVerba == "Verba로 번역",
+        "Korean selection popup action is wrong");
+    return Task.CompletedTask;
 }
 
 static Task ShortcutSettings()
