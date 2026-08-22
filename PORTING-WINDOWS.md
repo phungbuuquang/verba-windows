@@ -18,8 +18,8 @@ Word, VS Code, a PDF…), clicks the tray icon, and a **floating panel** appears
 already filled with that text and **translates it immediately**.
 
 Once a translation lands, the user can **refine** it over multiple turns:
-- pick a **tone** (Casual / Neutral / Formal, or one they wrote themselves),
-- toggle **action chips** (Shorter / More natural / Keep terms / Explain),
+- pick a **tone** (Casual / Neutral / Formal / Shorter / More natural / Keep
+  terms / Explain, or one they wrote themselves),
 - type a **free-form instruction** ("make it more formal", "drop the last
   sentence").
 
@@ -201,7 +201,6 @@ TranslationLanguage SourceLanguage = TranslationLanguage.Named("vi");
 TranslationLanguage TargetLanguage = TranslationLanguage.Named("en");
 bool IsAutoDetectSource    = false;   // read-only from outside; set via SetAutoDetectSource
 ToneSelection? Tone        = null;    // null = no tone picked
-HashSet<RefineAction> Actions = [];   // cumulative — several can be on at once
 string Freeform            = "";
 bool IsTranslating         = false;
 TranslationFailure? Failure = null;
@@ -263,10 +262,10 @@ if (IsTranslating && text == _inFlightSourceText) return;
 Start(instruction: null, resetHistory: true);
 ```
 
-#### `ApplyRefinement()` — tone or action chip toggled
+#### `ApplyRefinement()` — tone chip toggled
 ```csharp
 if (IsTranslating || IsEmptyState) return;
-Start(instruction: Instruction, resetHistory: false);
+Start(instruction: null, resetHistory: false);
 ```
 
 #### `ApplyFreeform()` — Enter or send button in the freeform field
@@ -288,7 +287,7 @@ _inFlightSourceText = null;
 IsTranslating = false;
 _speech.Stop();
 SourceText = ""; TranslatedText = ""; Freeform = "";
-Actions.Clear(); Tone = null; Failure = null;
+Tone = null; Failure = null;
 History.Clear(); HistoryIndex = -1;
 ```
 
@@ -390,17 +389,8 @@ something the user did wrong** — it must never land in the error banner.
 ### 3.6 Building the instruction strings
 
 ```csharp
-// Action chips + freeform (used by ApplyRefinement)
-private string? Instruction {
-    get {
-        var parts = Actions.Select(a => a.Instruction)
-                           .Concat(Freeform.Length == 0 ? [] : new[]{ Freeform })
-                           .ToList();
-        return parts.Count == 0 ? null : string.Join(", ", parts);
-    }
-}
-
-// What actually goes on the wire — a custom tone always comes first
+// What actually goes on the wire: custom and instruction-backed preset tones
+// use `instruction`; Casual/Neutral/Formal use the `tone` request field.
 private string? OutgoingInstruction(string? instruction) {
     var parts = new[] { Tone?.Instruction, instruction }
                 .Where(p => !string.IsNullOrEmpty(p)).ToList();
@@ -408,13 +398,8 @@ private string? OutgoingInstruction(string? instruction) {
 }
 ```
 
-The order of `Actions` must be **stable** so the server-side cache key is
-stable. C#'s `HashSet<T>` does **not** guarantee ordering across runs — iterate
-in enum declaration order instead:
-
-```csharp
-Enum.GetValues<RefineAction>().Where(Actions.Contains).Select(a => a.Instruction())
-```
+The four instruction-backed preset tones use stable English text so the
+server-side cache key remains stable.
 
 ### 3.7 `PushHistory`
 
@@ -480,9 +465,8 @@ The panel is a **fixed 640pt wide** (use 640 DIP in WPF), 12pt corner radius,
 │ │ scrolls when it       │ │ scrolls when it overflows      │  (each column
 │ └ overflows             │ └ error (red, 12pt) at bottom    │   scrolls itself)
 ├──────────────────────────┴─────────────────────────────────┤  hairline
-│ ToneChipRow    (Casual)(Neutral)(Formal)(custom tones…)(+) │  hidden while
+│ ToneChipRow    (Casual)…(Shorter)…(Explain)(custom…)(+)     │  hidden while
 │ [inline tone editor when adding/editing]                   │  IsEmptyState
-│ ActionChipRow  [←Shorter][💬Natural][</>Keep][💡Explain]   │
 ├────────────────────────────────────────────────────────────┤  hairline
 │ FreeformRow    ↳ [What should change? Just say it…]   [↑]  │
 ├────────────────────────────────────────────────────────────┤  hairline
@@ -564,9 +548,10 @@ The whole header (except the gear menu) is locked while `IsTranslating`.
 
 ### 4.6 `ToneChipRow` — the fiddliest component
 
-A **single-select** chip row: three presets + the user's saved tones + a `+`
-button. Use a `WrapPanel` (the mac build hand-rolls a `FlowLayout`; WPF has one
-built in).
+A **single-select** chip row: seven presets + the user's saved tones + a `+`
+button. The presets are Casual, Neutral, Formal, Shorter, More natural, Keep
+terms, and Explain. Use a `WrapPanel` (the mac build hand-rolls a `FlowLayout`;
+WPF has one built in).
 
 - Clicking the active chip **deselects** it (`Tone = null`) and still calls
   `ApplyRefinement()` — so the panel can get back to the no-tone state it opens
@@ -605,19 +590,18 @@ editing" can never drift apart.
 - After the editor closes, the caret goes to `.Source` if `IsEmptyState`,
   otherwise to `.Freeform`.
 
-### 4.7 `ActionChipRow`
+The last four presets are instruction-backed tones. Like every other tone,
+they are mutually exclusive, immediately call `ApplyRefinement()`, and are
+locked while `IsTranslating`.
 
-Four **cumulative** chips (any number can be on). Each toggle immediately calls
-`ApplyRefinement()` with the new combination. Locked while `IsTranslating`.
-
-| Enum | Label EN / VI / KO | `instruction` sent to the API (always English) |
+| Tone | Label EN / VI / KO | `instruction` sent to the API (always English) |
 |---|---|---|
 | `Shorter` | Shorter / Ngắn hơn / 더 짧게 | `shorter` |
 | `Natural` | More natural / Tự nhiên hơn / 더 자연스럽게 | `more natural` |
 | `KeepTerms` | Keep terms / Giữ thuật ngữ / 용어 유지 | `keep the technical terms` |
 | `Explain` | Explain / Giải thích / 설명 추가 | `explain further` |
 
-### 4.8 `FreeformRow`
+### 4.7 `FreeformRow`
 
 A ↳ icon + a `TextBox` (1–3 lines) + an ↑ button. Enter (no Shift) calls
 `ApplyFreeform()`. The field **stays typeable** while translating; only the send
@@ -651,7 +635,6 @@ button is locked.
 | Chip padding | 11 horizontal, 5 vertical |
 | Header pill | 9 horizontal, 5 vertical (4 for pickers); `#0F000000` background, or accent at 16% when active |
 | Tone chip shape | capsule (fully rounded) |
-| Action chip shape | 6pt radius |
 | `.locked` | `IsEnabled=false` + `Opacity=0.45` |
 
 The panel must work in both Windows **light and dark mode** — read
@@ -837,6 +820,12 @@ easier to debug).
 | `verba.customTones` | JSON array | The user's own saved tones. |
 | (new) panel position | 2 numbers | `Left` / `Top`. Discard if it falls outside every display. |
 
+The gear menu also exposes **Start with Windows**, disabled by default. Enabling
+it writes a quoted command for the current executable to the `Verba` value in
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`; disabling it removes that
+value. This is per-user registration and must not require elevation. A startup
+launch stays in the tray and does not open the translation panel automatically.
+
 ### `CustomTone`
 
 ```csharp
@@ -867,10 +856,14 @@ public abstract record ToneSelection {
     public sealed record Preset(Tone Tone) : ToneSelection;
     public sealed record Custom(CustomTone Tone) : ToneSelection;
 
-    // Only presets fill the API's `tone` field
+    // Only Casual/Neutral/Formal fill the API's `tone` field.
     public string? ApiValue => this is Preset p ? p.Tone.ToApiValue() : null;
-    // Only custom tones produce an instruction — the scaffolding is always English
-    public string? Instruction => this is Custom c ? $"use this tone: {c.Tone.Instruction}" : null;
+    // Other presets and custom tones produce model-facing instructions.
+    public string? Instruction => this switch {
+        Preset p => p.Tone.Instruction(),
+        Custom c => $"use this tone: {c.Tone.Instruction}",
+        _ => null,
+    };
     public CustomTone? CustomTone => (this as Custom)?.Tone;
 }
 ```
@@ -907,7 +900,7 @@ The following three groups **stay English** regardless of the interface
 language, because they travel to the server and determine the **cache key** —
 translating them would give every user their own cache entry:
 
-1. `RefineAction.Instruction` — `shorter`, `more natural`,
+1. Instruction-backed `Tone.Instruction` values — `shorter`, `more natural`,
    `keep the technical terms`, `explain further`.
 2. The literal `"initial"` used in `history`.
 3. The `"use this tone: "` scaffolding for custom tones (what the user typed
@@ -924,6 +917,8 @@ translating them would give every user their own cache entry:
 | `SwapLanguagesDisabled` | Pick a specific source language to swap | Chọn ngôn ngữ nguồn cụ thể để đảo chiều | 바꾸려면 원본 언어를 직접 선택하세요 |
 | `TrialDaysLeft(n)` | {n} days left in trial | Còn {n} ngày dùng thử | 체험판 {n}일 남음 |
 | `AppLanguage` | App language | Ngôn ngữ ứng dụng | 앱 언어 |
+| `StartWithWindows` | Start with Windows | Khởi động cùng Windows | Windows 시작 시 실행 |
+| `StartupChangeFailed` | Could not change the startup setting | Không thể thay đổi cài đặt khởi động | 시작 설정을 변경할 수 없습니다 |
 | `SourcePlaceholder` | Select text in another app, or type here… | Chọn văn bản ở app khác, hoặc gõ vào đây… | 다른 앱에서 텍스트를 선택하거나 여기에 입력하세요… |
 | `ClearAll` | Clear everything | Xoá tất cả | 모두 지우기 |
 | `Translating` | Translating | Đang dịch | 번역 중 |
@@ -945,7 +940,7 @@ translating them would give every user their own cache entry:
 | `ErrorInvalidResponse` | The server sent an invalid response. | Phản hồi không hợp lệ từ máy chủ. | 서버 응답이 올바르지 않습니다. |
 | `ErrorServerStatus(c)` | The server returned an error ({c}). | Máy chủ trả về lỗi ({c}). | 서버에서 오류를 반환했습니다 ({c}). |
 
-Tone and action chip labels: see §4.7 and the table below.
+Tone chip labels: see §4.6 and the table below.
 
 | Tone | EN | VI | KO | wire value |
 |---|---|---|---|---|
@@ -1005,7 +1000,7 @@ verba.Windows/
 ├── Models/
 │   ├── AppLanguage.cs
 │   ├── TranslationLanguage.cs
-│   ├── TranslationModels.cs      // request/response/Tone/RefineAction/Failure
+│   ├── TranslationModels.cs      // request/response/Tone/Failure
 │   └── CustomTone.cs             // + ToneSelection
 ├── ViewModels/
 │   └── TranslationViewModel.cs   // ALL of §3
@@ -1013,7 +1008,7 @@ verba.Windows/
 │   ├── ContentView.xaml          // composition + focus only
 │   └── Components/
 │       ├── PanelHeader / SourceRow / ResultRow
-│       ├── ToneChipRow / ActionChipRow / FreeformRow / PanelFooter
+│       ├── ToneChipRow / FreeformRow / PanelFooter
 │       ├── LoadingDots.xaml
 │       └── PanelStyle.xaml       // ResourceDictionary: chips, pills, hairlines, colours
 ├── Services/
@@ -1098,8 +1093,7 @@ Pass the `CancellationToken` straight through to `SendAsync`.
 - [ ] A custom tone goes into `instruction` (`use this tone: …`), **including on the first translate**.
 - [ ] Decode the error envelope **before** checking the status code (failures can be HTTP 200).
 - [ ] `history` resets on: source text change, language swap, auto-detect toggle. It does **not** reset on refinements.
-- [ ] Model-facing strings stay English: action chip instructions, `"initial"`, `"use this tone: "`.
-- [ ] Action chip order is stable (iterate in enum order, not `HashSet` order).
+- [ ] Model-facing strings stay English: instruction-backed tones, `"initial"`, `"use this tone: "`.
 - [ ] `deviceId` is generated **once** and never changes.
 
 ### Logic

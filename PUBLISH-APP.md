@@ -13,6 +13,52 @@ Tài liệu này mô tả quy trình publish và phát hành Verba bằng Velopa
 
 Chạy tất cả lệnh từ thư mục gốc của repository.
 
+## Cách đơn giản: chạy file BAT
+
+Double-click `publish-release.bat`, sau đó chọn:
+
+1. Publish update.
+2. Publish first release.
+3. Build and package only, không upload.
+
+Ở chế độ publish, file BAT ưu tiên đọc `VERBA_GITHUB_TOKEN` từ biến môi trường.
+Nếu không có, script tự đọc file `.env` ở root. Tạo file một lần bằng cách copy
+`.env.example` thành `.env`, rồi thay placeholder bằng token thật:
+
+```dotenv
+VERBA_GITHUB_TOKEN=github_pat_your_token_here
+```
+
+`.env` đã nằm trong `.gitignore`, không được commit token thật. Working tree vẫn
+phải sạch để publish; `.env` bị Git bỏ qua nên không làm working tree bị bẩn.
+
+## Chạy bằng PowerShell
+
+Script ở root sẽ đọc `Version` từ project, kiểm tra Git, build Release, chạy
+regression tests, publish self-contained, đóng gói Velopack và publish GitHub
+Release công khai:
+
+```powershell
+$env:VERBA_GITHUB_TOKEN = "YOUR_GITHUB_TOKEN"
+.\publish-release.ps1
+```
+
+Với release đầu tiên chưa có package cũ để tải về:
+
+```powershell
+.\publish-release.ps1 -FirstRelease
+```
+
+Kiểm tra toàn bộ quy trình nhưng không upload GitHub Release:
+
+```powershell
+.\publish-release.ps1 -FirstRelease -WhatIf
+```
+
+Script yêu cầu working tree sạch theo mặc định. Chỉ dùng
+`-AllowDirtyWorkingTree` khi chủ động muốn đóng gói code chưa commit. Các bước
+thủ công bên dưới được giữ lại để tham khảo và xử lý sự cố.
+
 ## 6. Publish ứng dụng
 
 Đặt phiên bản cần phát hành. Giá trị này phải giống với `Version` trong `verba-windows.csproj` và `--packVersion` ở bước đóng gói.
@@ -130,7 +176,7 @@ Nếu repository là private, thêm `--token $env:VERBA_GITHUB_TOKEN` vào lện
 Build, test và publish phiên bản mới:
 
 ```powershell
-c
+dotnet build .\verba-windows.csproj -c Release
 dotnet run --project .\Tests\verba-windows.Tests.csproj -c Release
 
 dotnet publish .\verba-windows.csproj `

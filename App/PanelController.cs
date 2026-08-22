@@ -11,13 +11,15 @@ public sealed class PanelController : IDisposable
     private readonly TranslationViewModel _viewModel;
     private readonly ISelectionCapture _selection;
     private readonly SettingsStore _settings;
+    private readonly IStartupService _startup;
     private readonly HotkeyWindow _hotkey;
     private bool _opening;
     private bool _disposed;
 
-    public PanelController(PanelWindow window, TranslationViewModel viewModel, ISelectionCapture selection, SettingsStore settings)
+    public PanelController(PanelWindow window, TranslationViewModel viewModel, ISelectionCapture selection,
+        SettingsStore settings, IStartupService startup)
     {
-        _window = window; _viewModel = viewModel; _selection = selection; _settings = settings;
+        _window = window; _viewModel = viewModel; _selection = selection; _settings = settings; _startup = startup;
         _window.HideRequested += (_, _) => Hide();
         _window.QuitRequested += (_, _) => QuitRequested?.Invoke(this, EventArgs.Empty);
         var shortcut = HotkeyGesture.TryParse(settings.Shortcut, out var saved) ? saved : HotkeyGesture.Default;
@@ -25,6 +27,10 @@ public sealed class PanelController : IDisposable
         _hotkey.Pressed += async (_, _) => await ToggleAsync();
         _window.ShortcutChangeRequested += OnShortcutChangeRequested;
         _window.SetShortcutState(_hotkey.Shortcut, _hotkey.IsRegistered);
+        _window.StartupChangeRequested += OnStartupChangeRequested;
+        var startupEnabled = _startup.IsEnabled;
+        if (startupEnabled) _startup.TrySetEnabled(true); // Refresh the executable path after an app update.
+        _window.SetStartupState(startupEnabled);
     }
 
     public event EventHandler? QuitRequested;
@@ -43,6 +49,17 @@ public sealed class PanelController : IDisposable
         _window.SetShortcutState(e.Shortcut, true);
         ShortcutChanged?.Invoke(this, new ShortcutEventArgs(e.Shortcut));
         System.Diagnostics.Trace.WriteLine($"Global shortcut changed to {e.Shortcut.DisplayText}");
+    }
+
+    private void OnStartupChangeRequested(object? sender, bool enabled)
+    {
+        if (!_startup.TrySetEnabled(enabled))
+        {
+            _window.SetStartupState(!enabled, true);
+            return;
+        }
+        _window.SetStartupState(enabled);
+        System.Diagnostics.Trace.WriteLine($"Start with Windows changed to {enabled}");
     }
 
     public async Task ToggleAsync()

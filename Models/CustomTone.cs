@@ -11,6 +11,11 @@ public abstract record ToneSelection
     public sealed record Custom(CustomTone Tone) : ToneSelection;
 
     public string? ApiValue => this is Preset p ? p.Tone.ToApiValue() : null;
-    public string? Instruction => this is Custom c ? $"use this tone: {c.Tone.Instruction}" : null;
+    public string? Instruction => this switch
+    {
+        Preset p => p.Tone.Instruction(),
+        Custom c => $"use this tone: {c.Tone.Instruction}",
+        _ => null
+    };
     public CustomTone? CustomTone => (this as Custom)?.Tone;
 }

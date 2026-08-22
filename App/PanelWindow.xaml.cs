@@ -28,12 +28,19 @@ public partial class PanelWindow : Window
     public event EventHandler? HideRequested;
     public event EventHandler? QuitRequested;
     public event EventHandler<ShortcutEventArgs>? ShortcutChangeRequested;
+    public event EventHandler<bool>? StartupChangeRequested;
 
     public void SetShortcutState(HotkeyGesture shortcut, bool registered, bool rejected = false)
     {
         ShortcutBox.Text = shortcut.DisplayText;
         ShortcutStatus.Text = rejected ? ViewModel.Strings.ShortcutInUse
             : registered ? "" : ViewModel.Strings.ShortcutUnavailable;
+    }
+
+    public void SetStartupState(bool enabled, bool rejected = false)
+    {
+        StartWithWindowsCheckBox.IsChecked = enabled;
+        StartupStatus.Text = rejected ? ViewModel.Strings.StartupChangeFailed : "";
     }
 
     public async void FocusInitial(bool externalSelection = false)
@@ -131,10 +138,10 @@ public partial class PanelWindow : Window
     private void Casual_Click(object s, RoutedEventArgs e) => ViewModel.ToggleTone(Tone.Casual);
     private void Neutral_Click(object s, RoutedEventArgs e) => ViewModel.ToggleTone(Tone.Neutral);
     private void Formal_Click(object s, RoutedEventArgs e) => ViewModel.ToggleTone(Tone.Formal);
-    private void Shorter_Click(object s, RoutedEventArgs e) => ViewModel.ToggleAction(RefineAction.Shorter);
-    private void Natural_Click(object s, RoutedEventArgs e) => ViewModel.ToggleAction(RefineAction.Natural);
-    private void KeepTerms_Click(object s, RoutedEventArgs e) => ViewModel.ToggleAction(RefineAction.KeepTerms);
-    private void Explain_Click(object s, RoutedEventArgs e) => ViewModel.ToggleAction(RefineAction.Explain);
+    private void Shorter_Click(object s, RoutedEventArgs e) => ViewModel.ToggleTone(Tone.Shorter);
+    private void Natural_Click(object s, RoutedEventArgs e) => ViewModel.ToggleTone(Tone.Natural);
+    private void KeepTerms_Click(object s, RoutedEventArgs e) => ViewModel.ToggleTone(Tone.KeepTerms);
+    private void Explain_Click(object s, RoutedEventArgs e) => ViewModel.ToggleTone(Tone.Explain);
     private void Freeform_Click(object s, RoutedEventArgs e) => ViewModel.ApplyFreeform();
     private void Undo_Click(object s, RoutedEventArgs e) => ViewModel.Undo();
     private void Redo_Click(object s, RoutedEventArgs e) => ViewModel.Redo();
@@ -177,6 +184,9 @@ public partial class PanelWindow : Window
 
     private void ResetShortcut_Click(object sender, RoutedEventArgs e) =>
         ShortcutChangeRequested?.Invoke(this, new ShortcutEventArgs(HotkeyGesture.Default));
+
+    private void StartWithWindows_Click(object sender, RoutedEventArgs e) =>
+        StartupChangeRequested?.Invoke(this, StartWithWindowsCheckBox.IsChecked == true);
 
     private void Language_Click(object sender, RoutedEventArgs e)
     {

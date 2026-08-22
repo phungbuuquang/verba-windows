@@ -50,21 +50,23 @@ public sealed class TranslationServiceException(TranslationFailure failure) : Ex
     public TranslationFailure Failure { get; } = failure;
 }
 
-public enum Tone { Casual, Neutral, Formal }
+public enum Tone { Casual, Neutral, Formal, Shorter, Natural, KeepTerms, Explain }
 public static class ToneExtensions
 {
-    public static string ToApiValue(this Tone tone) => tone.ToString().ToLowerInvariant();
-}
-
-public enum RefineAction { Shorter, Natural, KeepTerms, Explain }
-public static class RefineActionExtensions
-{
-    public static string Instruction(this RefineAction action) => action switch
+    public static string? ToApiValue(this Tone tone) => tone switch
     {
-        RefineAction.Shorter => "shorter",
-        RefineAction.Natural => "more natural",
-        RefineAction.KeepTerms => "keep the technical terms",
-        RefineAction.Explain => "explain further",
-        _ => throw new ArgumentOutOfRangeException(nameof(action))
+        Tone.Casual => "casual",
+        Tone.Neutral => "neutral",
+        Tone.Formal => "formal",
+        _ => null
+    };
+
+    public static string? Instruction(this Tone tone) => tone switch
+    {
+        Tone.Shorter => "shorter",
+        Tone.Natural => "more natural",
+        Tone.KeepTerms => "keep the technical terms",
+        Tone.Explain => "explain further",
+        _ => null
     };
 }

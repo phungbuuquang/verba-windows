@@ -55,7 +55,6 @@ public sealed class TranslationViewModel : ObservableObject, IDisposable
     public Strings Strings => LanguageStore.Strings;
     public IReadOnlyList<TranslationLanguage> Languages => _languageCatalog.Languages;
     public ObservableCollection<CustomTone> CustomTones { get; }
-    public HashSet<RefineAction> Actions { get; } = [];
 
     public string SourceText { get => _sourceText; set { if (SetProperty(ref _sourceText, value)) RaiseComputed(); } }
     public string TranslatedText { get => _translatedText; private set { if (SetProperty(ref _translatedText, value)) RaiseComputed(); } }
@@ -127,10 +126,10 @@ public sealed class TranslationViewModel : ObservableObject, IDisposable
     public bool IsCasual => Tone == new ToneSelection.Preset(Models.Tone.Casual);
     public bool IsNeutral => Tone == new ToneSelection.Preset(Models.Tone.Neutral);
     public bool IsFormal => Tone == new ToneSelection.Preset(Models.Tone.Formal);
-    public bool IsShorter => Actions.Contains(RefineAction.Shorter);
-    public bool IsNatural => Actions.Contains(RefineAction.Natural);
-    public bool IsKeepTerms => Actions.Contains(RefineAction.KeepTerms);
-    public bool IsExplain => Actions.Contains(RefineAction.Explain);
+    public bool IsShorter => Tone == new ToneSelection.Preset(Models.Tone.Shorter);
+    public bool IsNatural => Tone == new ToneSelection.Preset(Models.Tone.Natural);
+    public bool IsKeepTerms => Tone == new ToneSelection.Preset(Models.Tone.KeepTerms);
+    public bool IsExplain => Tone == new ToneSelection.Preset(Models.Tone.Explain);
 
     public void TranslateNow()
     {
@@ -150,7 +149,7 @@ public sealed class TranslationViewModel : ObservableObject, IDisposable
     public void ApplyRefinement()
     {
         if (IsTranslating || IsEmptyState) return;
-        Start(Instruction, false);
+        Start(null, false);
     }
 
     public void ApplyFreeform()
@@ -167,8 +166,8 @@ public sealed class TranslationViewModel : ObservableObject, IDisposable
         _pending?.Cancel(); _pending?.Dispose(); _pending = null;
         _inFlightSourceText = null; IsTranslating = false;
         StopSpeech(); SourceText = ""; TranslatedText = ""; Freeform = "";
-        Actions.Clear(); Tone = null; Failure = null; _history.Clear(); _historyIndex = -1;
-        RaiseActionProperties(); RaiseComputed();
+        Tone = null; Failure = null; _history.Clear(); _historyIndex = -1;
+        RaiseComputed();
     }
 
     public void SetAutoDetectSource(bool enabled)
@@ -234,14 +233,6 @@ public sealed class TranslationViewModel : ObservableObject, IDisposable
         ApplyRefinement();
     }
 
-    public void ToggleAction(RefineAction action)
-    {
-        if (IsTranslating) return;
-        if (!Actions.Add(action)) Actions.Remove(action);
-        RaiseActionProperties();
-        ApplyRefinement();
-    }
-
     public CustomTone SaveTone(CustomTone? existing, string instruction)
     {
         var wasApplied = existing is not null && Tone?.CustomTone?.Id == existing.Id;
@@ -276,16 +267,6 @@ public sealed class TranslationViewModel : ObservableObject, IDisposable
         if (!canSpeak) return;
         _pendingSpeechSide = side;
         _speech.Speak(text, languageId);
-    }
-
-    private string? Instruction
-    {
-        get
-        {
-            var parts = Enum.GetValues<RefineAction>().Where(Actions.Contains).Select(x => x.Instruction()).ToList();
-            if (Freeform.Length > 0) parts.Add(Freeform);
-            return parts.Count == 0 ? null : string.Join(", ", parts);
-        }
     }
 
     private string? OutgoingInstruction(string? instruction)
@@ -455,11 +436,9 @@ public sealed class TranslationViewModel : ObservableObject, IDisposable
     }
     private void RaiseToneProperties()
     {
-        OnPropertyChanged(nameof(IsCasual)); OnPropertyChanged(nameof(IsNeutral)); OnPropertyChanged(nameof(IsFormal)); OnPropertyChanged(nameof(Tone));
-    }
-    private void RaiseActionProperties()
-    {
-        OnPropertyChanged(nameof(IsShorter)); OnPropertyChanged(nameof(IsNatural)); OnPropertyChanged(nameof(IsKeepTerms)); OnPropertyChanged(nameof(IsExplain));
+        OnPropertyChanged(nameof(IsCasual)); OnPropertyChanged(nameof(IsNeutral)); OnPropertyChanged(nameof(IsFormal));
+        OnPropertyChanged(nameof(IsShorter)); OnPropertyChanged(nameof(IsNatural)); OnPropertyChanged(nameof(IsKeepTerms));
+        OnPropertyChanged(nameof(IsExplain)); OnPropertyChanged(nameof(Tone));
     }
 
     public void Dispose()

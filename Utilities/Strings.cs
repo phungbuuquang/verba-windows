@@ -20,6 +20,8 @@ public sealed partial class Strings(AppLanguage language)
     public string ShortcutNeedsModifier => Pick("Include Ctrl, Alt, Shift, or Win", "Cần có Ctrl, Alt, Shift hoặc Win", "Ctrl, Alt, Shift 또는 Win을 포함하세요");
     public string ShortcutInUse => Pick("That shortcut is already in use", "Tổ hợp phím này đang được ứng dụng khác sử dụng", "다른 앱에서 이미 사용 중인 단축키입니다");
     public string ShortcutUnavailable => Pick("The shortcut could not be registered", "Không thể đăng ký phím tắt này", "단축키를 등록할 수 없습니다");
+    public string StartWithWindows => Pick("Start with Windows", "Khởi động cùng Windows", "Windows 시작 시 실행");
+    public string StartupChangeFailed => Pick("Could not change the startup setting", "Không thể thay đổi cài đặt khởi động", "시작 설정을 변경할 수 없습니다");
     public string Quit => Pick("Quit", "Thoát", "종료");
     public string SourcePlaceholder => Pick("Select text in another app, or type here…", "Chọn văn bản ở app khác, hoặc gõ vào đây…", "다른 앱에서 텍스트를 선택하거나 여기에 입력하세요…");
     public string ClearAll => Pick("Clear everything", "Xoá tất cả", "모두 지우기");
@@ -46,8 +48,8 @@ public sealed partial class Strings(AppLanguage language)
     public string ToneCasual => Pick("Casual", "Thân mật", "친근하게");
     public string ToneNeutral => Pick("Neutral", "Trung tính", "중립적으로");
     public string ToneFormal => Pick("Formal", "Trang trọng", "격식 있게");
-    public string ActionShorter => Pick("Shorter", "Ngắn hơn", "더 짧게");
-    public string ActionNatural => Pick("More natural", "Tự nhiên hơn", "더 자연스럽게");
-    public string ActionKeepTerms => Pick("Keep terms", "Giữ thuật ngữ", "용어 유지");
-    public string ActionExplain => Pick("Explain", "Giải thích", "설명 추가");
+    public string ToneShorter => Pick("Shorter", "Ngắn hơn", "더 짧게");
+    public string ToneNatural => Pick("More natural", "Tự nhiên hơn", "더 자연스럽게");
+    public string ToneKeepTerms => Pick("Keep terms", "Giữ thuật ngữ", "용어 유지");
+    public string ToneExplain => Pick("Explain", "Giải thích", "설명 추가");
 }

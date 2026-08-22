@@ -47,7 +47,7 @@ public partial class App : System.Windows.Application
             new Services.TranslationApiService(), speech, settings, language, tones, _languageCatalog);
         var window = new AppHost.PanelWindow(viewModel);
         var selection = new Services.Win32SelectionCapture();
-        _controller = new AppHost.PanelController(window, viewModel, selection, settings);
+        _controller = new AppHost.PanelController(window, viewModel, selection, settings, new Services.StartupService());
         _controller.QuitRequested += Quit;
         _updates = new Services.AppUpdateService();
         _tray = new AppHost.TrayIcon(_controller, language, _updates.IsInstalled);

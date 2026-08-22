@@ -9,7 +9,7 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("JSON omits sourceLang and tone but keeps null instruction", JsonContract),
     ("HTTP 200 error envelopes are classified before success", ErrorEnvelope),
-    ("custom tone is model-facing refinement text", CustomToneInstruction),
+    ("tone choices share one selection and preserve API fields", UnifiedToneSelection),
     ("new source cancels an in-flight request without an error", Cancellation),
     ("undo/redo cursor and redo truncation", History),
     ("custom tone store deduplicates and caps MRU", ToneStore),
@@ -17,6 +17,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("external selection starts a trimmed translation", ExternalSelection),
     ("selection popup translation action is localized", SelectionPopupLocalization),
     ("shortcut parser and settings persistence", ShortcutSettings),
+    ("start with Windows registration is persistent and reversible", StartupRegistration),
     ("language catalog fetches, caches, and expires after 24 hours", LanguageCatalogCache),
     ("first launch follows Windows language and saves user choices", LanguageDefaults)
 };
@@ -56,14 +57,32 @@ static async Task ErrorEnvelope()
     }
 }
 
-static async Task CustomToneInstruction()
+static async Task UnifiedToneSelection()
 {
     var harness = Harness.Create(); harness.Vm.SourceText = "xin chào";
     harness.Vm.SaveTone(null, "warm and concise");
     await Wait(harness.Vm);
-    var request = harness.Api.Requests.Single();
+    var request = harness.Api.Requests[^1];
     Check(request.Tone is null, "custom tone leaked into tone");
     Check(request.Instruction == "use this tone: warm and concise", "custom tone instruction is wrong");
+
+    harness.Vm.ToggleTone(Tone.Shorter);
+    await Wait(harness.Vm);
+    request = harness.Api.Requests[^1];
+    Check(harness.Vm.IsShorter && !harness.Vm.IsCasual, "instruction tone was not selected exclusively");
+    Check(request.Tone is null && request.Instruction == "shorter", "instruction tone used the wrong API fields");
+
+    harness.Vm.ToggleTone(Tone.Casual);
+    await Wait(harness.Vm);
+    request = harness.Api.Requests[^1];
+    Check(harness.Vm.IsCasual && !harness.Vm.IsShorter, "API tone was not selected exclusively");
+    Check(request.Tone == "casual" && request.Instruction is null, "API tone used the wrong API fields");
+
+    harness.Vm.ToggleTone(Tone.Casual);
+    await Wait(harness.Vm);
+    request = harness.Api.Requests[^1];
+    Check(harness.Vm.Tone is null, "active tone was not deselected");
+    Check(request.Tone is null && request.Instruction is null, "deselected tone still affected the API request");
     harness.Dispose();
 }
 
@@ -79,10 +98,10 @@ static async Task Cancellation()
 static async Task History()
 {
     var harness = Harness.Create(); harness.Vm.SourceText = "hello"; harness.Vm.TranslateNow(); await Wait(harness.Vm);
-    harness.Vm.ToggleAction(RefineAction.Shorter); await Wait(harness.Vm);
+    harness.Vm.ToggleTone(Tone.Shorter); await Wait(harness.Vm);
     Check(harness.Vm.CanUndo, "undo unavailable"); harness.Vm.Undo();
     Check(harness.Vm.TranslatedText == "result-1" && harness.Vm.CanRedo, "undo cursor wrong");
-    harness.Vm.ToggleAction(RefineAction.Natural); await Wait(harness.Vm);
+    harness.Vm.ToggleTone(Tone.Natural); await Wait(harness.Vm);
     Check(!harness.Vm.CanRedo && harness.Vm.TranslatedText == "result-3", "redo branch was not truncated"); harness.Dispose();
 }
 
@@ -158,6 +177,23 @@ static Task ShortcutSettings()
         Check(new SettingsStore(path).Shortcut == "Ctrl+Alt+K", "shortcut was not persisted");
     }
     finally { try { File.Delete(path); } catch { } }
+    return Task.CompletedTask;
+}
+
+static Task StartupRegistration()
+{
+    var store = new FakeStartupRegistrationStore();
+    var startup = new StartupService(store, @"C:\Program Files\Verba\verba-windows.exe");
+    Check(!startup.IsEnabled, "startup was enabled without a registration");
+    Check(startup.TrySetEnabled(true), "startup registration failed");
+    Check(store.Command == "\"C:\\Program Files\\Verba\\verba-windows.exe\" --startup",
+        "startup command did not quote the executable path");
+    Check(new StartupService(store, @"C:\Program Files\Verba\verba-windows.exe").IsEnabled,
+        "startup registration was not visible after reopening");
+    Check(startup.TrySetEnabled(false) && !startup.IsEnabled, "startup registration was not removed");
+
+    store.ThrowOnWrite = true;
+    Check(!startup.TrySetEnabled(true) && !startup.IsEnabled, "startup write failure was not reported");
     return Task.CompletedTask;
 }
 
@@ -289,6 +325,19 @@ sealed class FakeSpeech : ISpeechService
     }
     public void Stop() { IsSpeaking = false; SpeakingChanged?.Invoke(this, false); }
     public void Dispose() { }
+}
+
+sealed class FakeStartupRegistrationStore : IStartupRegistrationStore
+{
+    public string? Command { get; private set; }
+    public bool ThrowOnWrite { get; set; }
+    public string? Read() => Command;
+    public void Write(string command)
+    {
+        if (ThrowOnWrite) throw new InvalidOperationException("write failed");
+        Command = command;
+    }
+    public void Delete() => Command = null;
 }
 
 sealed class Harness : IDisposable
