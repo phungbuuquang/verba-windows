@@ -63,6 +63,11 @@ public partial class App : System.Windows.Application
             System.Diagnostics.Trace.WriteLine($"Selection translation popup unavailable: {ex}");
         }
         System.Diagnostics.Trace.WriteLine($"Tray icon initialized; {_controller.ShortcutText} registered={_controller.HotkeyRegistered}");
+        var installations = new Services.InstallationReporter(
+            new Services.InstallationApiService(),
+            settings,
+            Services.InstallationReporter.DirectChannel);
+        _ = installations.ReportLaunchAsync(_shutdown.Token);
         _ = CheckForUpdatesAfterStartupAsync();
         _ = _languageCatalog.RunAsync(_shutdown.Token);
     }

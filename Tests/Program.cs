@@ -19,7 +19,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("shortcut parser and settings persistence", ShortcutSettings),
     ("start with Windows registration is persistent and reversible", StartupRegistration),
     ("language catalog fetches, caches, and expires after 24 hours", LanguageCatalogCache),
-    ("first launch follows Windows language and saves user choices", LanguageDefaults)
+    ("first launch follows Windows language and saves user choices", LanguageDefaults),
+    ("installation registration reuses the device id and reports once per launch", InstallationRegistration),
+    ("installation registration failures stay silent", InstallationRegistrationFailure)
 };
 
 var failures = 0;
@@ -272,7 +274,63 @@ static async Task Wait(TranslationViewModel vm)
     Check(!vm.IsTranslating, "translation timed out");
 }
 
+static async Task InstallationRegistration()
+{
+    var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"verba-test-{Guid.NewGuid():N}.json");
+    try
+    {
+        var settings = new SettingsStore(path);
+        var deviceId = settings.GetOrCreateDeviceId();
+        var api = new FakeInstallationApi();
+        var reporter = new InstallationReporter(api, settings, InstallationReporter.DirectChannel);
+
+        await reporter.ReportLaunchAsync(default);
+        await reporter.ReportLaunchAsync(default);
+
+        Check(api.Requests.Count == 1, $"expected one registration per launch, got {api.Requests.Count}");
+        var request = api.Requests[0];
+        Check(request.InstallationId == deviceId, "registration did not reuse the persisted device id");
+        Check(request.Platform == "windows", "platform is wrong");
+        Check(request.DistributionChannel == "direct", "Windows builds ship outside a store and must report the direct channel");
+        Check(request.Architecture is "arm64" or "x64" or "x86", $"unexpected architecture {request.Architecture}");
+        Check(!string.IsNullOrWhiteSpace(request.AppVersion), "appVersion is missing");
+        Check(!string.IsNullOrWhiteSpace(request.BuildNumber), "buildNumber is missing");
+        Check(System.Version.TryParse(request.OsVersion, out _), $"osVersion is not a version: {request.OsVersion}");
+
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(request));
+        foreach (var name in new[] { "installationId", "platform", "distributionChannel", "appVersion", "buildNumber", "osVersion", "architecture" })
+            Check(json.RootElement.TryGetProperty(name, out _), $"{name} was not serialized");
+    }
+    finally { try { File.Delete(path); } catch { } }
+}
+
+static async Task InstallationRegistrationFailure()
+{
+    var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"verba-test-{Guid.NewGuid():N}.json");
+    try
+    {
+        var response = new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError)
+        { Content = new System.Net.Http.StringContent("{\"error\":\"boom\"}") };
+        var service = new InstallationApiService(new System.Net.Http.HttpClient(new FakeHandler(response)));
+        var reporter = new InstallationReporter(service, new SettingsStore(path), InstallationReporter.DirectChannel);
+
+        // Must complete without throwing: registration is telemetry, not a user-facing operation.
+        await reporter.ReportLaunchAsync(default);
+    }
+    finally { try { File.Delete(path); } catch { } }
+}
+
 static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
+
+sealed class FakeInstallationApi : IInstallationApiService
+{
+    public List<RegisterInstallationRequest> Requests { get; } = [];
+    public Task RegisterAsync(RegisterInstallationRequest request, CancellationToken cancellationToken)
+    {
+        Requests.Add(request);
+        return Task.CompletedTask;
+    }
+}
 
 sealed class FakeApi : ITranslationApiService
 {
